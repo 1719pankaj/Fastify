@@ -169,7 +169,7 @@ fun MainScreen(
                             viewModel.fetchHistoricalSessions()
                             showReplayPicker = true 
                         }) {
-                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurface)
+                            Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurface)
                         }
                         IconButton(onClick = { viewModel.refreshData() }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurface)
@@ -296,6 +296,7 @@ fun TrackStatusBanner(widgetState: WidgetState?) {
             }
         }
     }
+}
 }
 
 @Composable
@@ -1126,7 +1127,6 @@ fun HistoricalSessionPickerSheet(
             }
         }
     }
-}
 
 fun formatDuration(totalSeconds: Long): String {
     val hrs = totalSeconds / 3600
