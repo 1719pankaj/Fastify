@@ -1,0 +1,14 @@
+[Unit]
+Description=F1 Android Widget Backend and Cloudflare Tunnel
+After=network.target
+
+[Service]
+Type=simple
+User=radxa
+WorkingDirectory=/home/radxa/F1/server
+ExecStart=/bin/bash /home/radxa/F1/server/start.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
