@@ -113,3 +113,27 @@ Alternatively, for a **quick, temporary URL** without an account, you can just r
 cloudflared tunnel --url http://localhost:8000
 ```
 This will instantly generate a free, secure `https://<random-words>.trycloudflare.com` URL that forwards to your backend. Put this URL in your Android app!
+
+---
+
+## Running on Boot (systemd Service)
+
+To configure the FastAPI server and the Cloudflare Tunnel to run in the background and start automatically whenever your SBC boots, we use systemd:
+
+1. **Install and Enable the Service:**
+   ```bash
+   chmod +x start.sh
+   sudo cp f1-widget.service /etc/systemd/system/f1-widget.service
+   sudo systemctl daemon-reload
+   sudo systemctl enable f1-widget.service
+   sudo systemctl start f1-widget.service
+   ```
+
+2. **Managing the Service:**
+   - **Check Status:** `sudo systemctl status f1-widget.service`
+   - **Stop Service:** `sudo systemctl stop f1-widget.service`
+   - **Restart Service:** `sudo systemctl restart f1-widget.service`
+   - **View Logs:** 
+     - Backend API logs: `tail -f server.log`
+     - Tunneling logs: `tail -f tunnel.log`
+
