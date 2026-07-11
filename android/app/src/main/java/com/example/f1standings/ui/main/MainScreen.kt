@@ -40,6 +40,13 @@ import com.example.f1standings.data.SessionInfo
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.BottomAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,114 +69,122 @@ fun MainScreen(
     var showReplayPicker by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "F1 LIVE DASHBOARD",
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color.White
-                    )
-                },
-                actions = {
-                    IconButton(onClick = { 
-                        viewModel.fetchHistoricalSessions()
-                        showReplayPicker = true 
-                    }) {
-                        Icon(Icons.Default.List, contentDescription = "History", tint = Color.White)
-                    }
-                    IconButton(onClick = { viewModel.refreshData() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color.White)
-                    }
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF15151F)
-                )
-            )
-        },
-        containerColor = Color(0xFF0F0F14)
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = modifier
                 .padding(paddingValues)
                 .fillMaxSize()
         ) {
-            // Track status banner
-            TrackStatusBanner(widgetState = widgetState)
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Track status banner
+                TrackStatusBanner(widgetState = widgetState)
 
-            // Replay Controls (Only shown during simulation mode)
-            if (widgetState?.session?.status == "simulation") {
-                ReplayControlPanel(
-                    sessionInfo = widgetState?.session,
-                    onPlayPauseToggle = {
-                        val isPaused = widgetState?.session?.paused == true
-                        if (isPaused) viewModel.resumeSimulation() else viewModel.pauseSimulation()
-                    },
-                    onSeek = { offset ->
-                        viewModel.seekSimulation(offset)
-                    },
-                    onSpeedChange = { speed ->
-                        viewModel.changeSpeed(speed)
+                // Connection Error Banner
+                AnimatedVisibility(visible = error != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Text(
+                            text = error ?: "",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
-                )
-            }
+                }
 
-            // Connection Error Banner
-            AnimatedVisibility(visible = error != null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                ) {
-                    Text(
-                        text = error ?: "",
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                // Main Standings List or Next Session Info
+                Box(modifier = Modifier.weight(1f)) {
+                    if (widgetState == null && isRefreshing) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Color(0xFFE10600))
+                        }
+                    } else if (widgetState == null || widgetState?.standings.isNullOrEmpty()) {
+                        // Show next session info if available
+                        NoActiveSessionScreen(
+                            schedule = schedule,
+                            baseUrl = baseUrl,
+                            onSettingsClick = { showSettings = true },
+                            onReplayClick = {
+                                viewModel.fetchHistoricalSessions()
+                                showReplayPicker = true
+                            }
+                        )
+                    } else {
+                        StandingsList(widgetState!!)
+                    }
                 }
             }
-
-            // Main Standings List or Next Session Info
-            Box(modifier = Modifier.weight(1f)) {
-                if (widgetState == null && isRefreshing) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color(0xFFE10600))
+            
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Race control logs ticker at bottom
+                widgetState?.raceControl?.let { logs ->
+                    if (logs.isNotEmpty()) {
+                        RaceControlTicker(logs = logs)
                     }
-                } else if (widgetState == null || widgetState?.standings.isNullOrEmpty()) {
-                    // Show next session info if available
-                    NoActiveSessionScreen(
-                        schedule = schedule,
-                        baseUrl = baseUrl,
-                        onSettingsClick = { showSettings = true },
-                        onReplayClick = {
-                            viewModel.fetchHistoricalSessions()
-                            showReplayPicker = true
+                }
+                
+                // Replay Controls (Only shown during simulation mode)
+                if (widgetState?.session?.status == "simulation") {
+                    ReplayControlPanel(
+                        sessionInfo = widgetState?.session,
+                        onPlayPauseToggle = {
+                            val isPaused = widgetState?.session?.paused == true
+                            if (isPaused) viewModel.resumeSimulation() else viewModel.pauseSimulation()
+                        },
+                        onSeek = { offset ->
+                            viewModel.seekSimulation(offset)
+                        },
+                        onSpeedChange = { speed ->
+                            viewModel.changeSpeed(speed)
                         }
                     )
-                } else {
-                    StandingsList(widgetState!!)
                 }
-            }
 
-            // Race control logs ticker at bottom
-            widgetState?.raceControl?.let { logs ->
-                if (logs.isNotEmpty()) {
-                    RaceControlTicker(logs = logs)
+                // Floating Action Pill
+                Card(
+                    shape = RoundedCornerShape(50),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(8.dp),
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        IconButton(onClick = { 
+                            viewModel.fetchHistoricalSessions()
+                            showReplayPicker = true 
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = { viewModel.refreshData() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
                 }
             }
         }
     }
 
     if (showSettings) {
-        SettingsDialog(
+        SettingsSheet(
             currentUrl = baseUrl,
             onDismiss = { showSettings = false },
             onSave = { newUrl ->
@@ -188,7 +203,7 @@ fun MainScreen(
     }
 
     if (showReplayPicker) {
-        HistoricalSessionPickerDialog(
+        HistoricalSessionPickerSheet(
             sessions = historicalSessions,
             onDismiss = { showReplayPicker = false },
             onSelectSession = { sessionKey ->
@@ -213,15 +228,22 @@ fun TrackStatusBanner(widgetState: WidgetState?) {
         "SAFETY CAR" -> Color(0xFFE65100) to Color.White
         "VIRTUAL SAFETY CAR" -> Color(0xFFFF6D00) to Color.White
         "CHECKERED" -> Color(0xFF37474F) to Color.White
-        else -> Color(0xFF1E1E28) to Color.Gray
+        else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Column(
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = bg),
+        elevation = CardDefaults.cardElevation(8.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .background(bg)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(16.dp)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -285,7 +307,7 @@ fun StandingsList(state: WidgetState) {
         .minOfOrNull { it.bestLapTime!! }
 
     LazyColumn(
-        contentPadding = PaddingValues(8.dp),
+        contentPadding = PaddingValues(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 220.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.fillMaxSize()
     ) {
@@ -308,7 +330,7 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
 
     Card(
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E26)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -339,12 +361,12 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                         text = (driver.position ?: "--").toString(),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 20.sp,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "#${driver.driverNumber}",
                         fontSize = 10.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace
                     )
                 }
@@ -357,19 +379,19 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                         text = driver.nameAcronym,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = driver.fullName,
                         fontSize = 11.sp,
-                        color = Color.LightGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = driver.teamName,
                         fontSize = 10.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -383,7 +405,7 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                     Text(
                         text = driver.gapToLeader ?: "--",
                         fontSize = 12.sp,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
                         maxLines = 1,
@@ -392,7 +414,7 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                     Text(
                         text = driver.interval ?: "",
                         fontSize = 10.sp,
-                        color = Color.LightGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -409,7 +431,7 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                     Text(
                         text = "${driver.tyreAge} laps old",
                         fontSize = 10.sp,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -421,20 +443,20 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                     Text(
                         text = "Laps: ${driver.lapsCompleted}",
                         fontSize = 11.sp,
-                        color = Color.LightGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "LAST: ${formatLapTime(driver.lastLapTime)}",
                         fontSize = 11.sp,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontFamily = FontFamily.Monospace
                     )
                     Text(
                         text = "BEST: ${formatLapTime(driver.bestLapTime)}",
                         fontSize = 11.sp,
-                        color = if (isFastestLap) Color(0xFFD087F2) else Color.Gray,
+                        color = if (isFastestLap) Color(0xFFD087F2) else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (isFastestLap) FontWeight.Bold else FontWeight.Normal,
                         fontFamily = FontFamily.Monospace
                     )
@@ -479,18 +501,20 @@ fun TyreCompoundBadge(compound: String?) {
 @Composable
 fun RaceControlTicker(logs: List<String>) {
     Card(
-        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF15151F)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color.DarkGray, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+            .padding(16.dp)
+            .height(100.dp)
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 text = "RACE CONTROL MESSAGES",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.Red,
+                color = MaterialTheme.colorScheme.error,
                 letterSpacing = 1.sp,
                 fontFamily = FontFamily.Monospace
             )
@@ -501,7 +525,7 @@ fun RaceControlTicker(logs: List<String>) {
                 Text(
                     text = "• $message",
                     fontSize = 10.sp,
-                    color = Color.LightGray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.padding(vertical = 2.dp),
                     maxLines = 2,
@@ -535,12 +559,12 @@ fun NoActiveSessionScreen(
             text = "No Active Session",
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "The backend is currently idle. Connect or start a simulation in the settings panel.",
-            color = Color.Gray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 14.sp,
             textAlign = TextAlign.Center
         )
@@ -549,7 +573,7 @@ fun NoActiveSessionScreen(
 
         schedule?.nextSession?.let { ns ->
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E26)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -557,19 +581,19 @@ fun NoActiveSessionScreen(
                         text = "NEXT UPCOMING SESSION",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFE10600),
+                        color = MaterialTheme.colorScheme.primary,
                         fontFamily = FontFamily.Monospace
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = ns.sessionName,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 16.sp
                     )
                     Text(
                         text = ns.dateStart.substringBefore("+").replace("T", " "),
-                        color = Color.LightGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
                     )
                 }
@@ -604,8 +628,9 @@ fun NoActiveSessionScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsDialog(
+fun SettingsSheet(
     currentUrl: String,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
@@ -616,119 +641,115 @@ fun SettingsDialog(
     var sessionKeyInput by remember { mutableStateOf("9472") }
     var speedInput by remember { mutableStateOf("10.0") }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E28)),
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    ) {
+        Column(
             modifier = Modifier
+                .padding(20.dp)
                 .fillMaxWidth()
-                .padding(16.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .padding(20.dp)
-                    .fillMaxWidth()
-            ) {
-                Text(
-                    text = "SETTINGS & CONTROL",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = Color.White,
-                    fontFamily = FontFamily.Monospace
-                )
+            Text(
+                text = "SETTINGS & CONTROL",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = FontFamily.Monospace
+            )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Base URL Section
-                Text(
-                    text = "Backend Base URL:",
-                    fontSize = 12.sp,
-                    color = Color.LightGray,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
+            // Base URL Section
+            Text(
+                text = "Backend Base URL:",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedTextField(
+                value = urlInput,
+                onValueChange = { urlInput = it },
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Button(
+                onClick = { onSave(urlInput) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Save & Apply URL", color = MaterialTheme.colorScheme.onPrimary)
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+
+            // Developer Session Simulation Trigger Section
+            Text(
+                text = "Trigger Simulation (9472 = Bahrain 2024):",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
-                    value = urlInput,
-                    onValueChange = { urlInput = it },
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                    value = sessionKeyInput,
+                    onValueChange = { sessionKeyInput = it },
+                    label = { Text("Session Key", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFFE10600),
-                        unfocusedBorderColor = Color.Gray
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 4.dp),
                     singleLine = true
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                    onClick = { onSave(urlInput) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE10600)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Save & Apply URL", color = Color.White)
-                }
-
-                Divider(modifier = Modifier.padding(vertical = 16.dp), color = Color.DarkGray)
-
-                // Developer Session Simulation Trigger Section
-                Text(
-                    text = "Trigger Simulation (9472 = Bahrain 2024):",
-                    fontSize = 12.sp,
-                    color = Color.LightGray,
-                    fontWeight = FontWeight.Bold
+                OutlinedTextField(
+                    value = speedInput,
+                    onValueChange = { speedInput = it },
+                    label = { Text("Speed (x)", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp),
+                    singleLine = true
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = sessionKeyInput,
-                        onValueChange = { sessionKeyInput = it },
-                        label = { Text("Session Key", color = Color.Gray) },
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.White,
-                            unfocusedBorderColor = Color.Gray
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 4.dp),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = speedInput,
-                        onValueChange = { speedInput = it },
-                        label = { Text("Speed (x)", color = Color.Gray) },
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.White,
-                            unfocusedBorderColor = Color.Gray
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 4.dp),
-                        singleLine = true
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        val session = sessionKeyInput.toIntOrNull() ?: 9472
-                        val speed = speedInput.toDoubleOrNull() ?: 10.0
-                        onStartSimulation(session, speed)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF388E3C)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Start Simulation", color = Color.White)
-                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    val session = sessionKeyInput.toIntOrNull() ?: 9472
+                    val speed = speedInput.toDoubleOrNull() ?: 10.0
+                    onStartSimulation(session, speed)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Start Simulation", color = MaterialTheme.colorScheme.onTertiary)
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Close", color = Color.LightGray)
-                    }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Close", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -796,13 +817,14 @@ fun ReplayControlPanel(
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Card(
-            shape = RoundedCornerShape(0.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C24)),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            elevation = CardDefaults.cardElevation(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 // Seekbar
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -811,7 +833,7 @@ fun ReplayControlPanel(
                     Text(
                         text = formatDuration(sliderPosition.toLong()),
                         fontSize = 11.sp,
-                        color = Color.LightGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.width(55.dp)
                     )
@@ -828,9 +850,9 @@ fun ReplayControlPanel(
                         },
                         valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
                         colors = SliderDefaults.colors(
-                            activeTrackColor = Color(0xFFE10600),
-                            inactiveTrackColor = Color.DarkGray,
-                            thumbColor = Color(0xFFE10600)
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            thumbColor = MaterialTheme.colorScheme.primary
                         ),
                         modifier = Modifier.weight(1f)
                     )
@@ -838,7 +860,7 @@ fun ReplayControlPanel(
                     Text(
                         text = formatDuration(totalDuration),
                         fontSize = 11.sp,
-                        color = Color.LightGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.width(55.dp),
                         textAlign = TextAlign.End
@@ -857,17 +879,17 @@ fun ReplayControlPanel(
                     Button(
                         onClick = onPlayPauseToggle,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isPaused) Color(0xFF388E3C) else Color(0xFFE10600)
+                            containerColor = if (isPaused) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                        shape = RoundedCornerShape(4.dp),
+                        shape = RoundedCornerShape(50),
                         modifier = Modifier.height(32.dp)
                     ) {
                         Text(
                             text = if (isPaused) "PLAY" else "PAUSE",
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
@@ -880,7 +902,7 @@ fun ReplayControlPanel(
                             text = "SPEED: ",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = FontFamily.Monospace
                         )
                         listOf(1.0, 2.0, 5.0, 10.0, 20.0).forEach { speedVal ->
@@ -888,16 +910,16 @@ fun ReplayControlPanel(
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (isSelected) Color(0xFFE10600) else Color(0xFF2C2C35))
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
                                     .clickable { onSpeedChange(speedVal) }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
                                 Text(
                                     text = "${speedVal.toInt()}x",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Color.White else Color.LightGray,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
@@ -906,47 +928,133 @@ fun ReplayControlPanel(
                 }
             }
         }
-        HorizontalDivider(color = Color.DarkGray, thickness = 1.dp)
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoricalSessionPickerDialog(
+fun HistoricalSessionPickerSheet(
     sessions: List<HistoricalSession>,
     onDismiss: () -> Unit,
     onSelectSession: (Int) -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E28)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.8f)
-                .padding(8.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxSize()
-            ) {
-                Text(
-                    text = "REPLAY A PAST RACE",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = Color.White,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
+    var selectedYear by remember { mutableStateOf("All") }
+    var selectedCountry by remember { mutableStateOf("All") }
+    
+    val years = remember(sessions) { listOf("All") + sessions.map { 
+        try { it.dateStart.take(4) } catch (e: Exception) { "" } 
+    }.filter { it.isNotEmpty() }.distinct().sortedDescending() }
+    
+    val countries = remember(sessions) { listOf("All") + sessions.map { it.countryName }.distinct().sorted() }
+    
+    val filteredSessions = remember(sessions, selectedYear, selectedCountry) {
+        sessions.filter { 
+            (selectedYear == "All" || it.dateStart.startsWith(selectedYear)) &&
+            (selectedCountry == "All" || it.countryName == selectedCountry)
+        }
+    }
 
-                if (sessions.isEmpty()) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        modifier = Modifier.fillMaxHeight(0.8f)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxSize()
+        ) {
+            Text(
+                text = "REPLAY A PAST RACE",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+                // Filters
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    var yearExpanded by remember { mutableStateOf(false) }
+                    var countryExpanded by remember { mutableStateOf(false) }
+                    
+                    ExposedDropdownMenuBox(
+                        expanded = yearExpanded,
+                        onExpandedChange = { yearExpanded = it },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = selectedYear,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Year", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = yearExpanded) },
+                            modifier = Modifier.menuAnchor(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                            )
+                        )
+                        ExposedDropdownMenu(
+                            expanded = yearExpanded,
+                            onDismissRequest = { yearExpanded = false }
+                        ) {
+                            years.forEach { y ->
+                                DropdownMenuItem(
+                                    text = { Text(y) },
+                                    onClick = { selectedYear = y; yearExpanded = false }
+                                )
+                            }
+                        }
+                    }
+                    
+                    ExposedDropdownMenuBox(
+                        expanded = countryExpanded,
+                        onExpandedChange = { countryExpanded = it },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = selectedCountry,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Country", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = countryExpanded) },
+                            modifier = Modifier.menuAnchor(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                            )
+                        )
+                        ExposedDropdownMenu(
+                            expanded = countryExpanded,
+                            onDismissRequest = { countryExpanded = false }
+                        ) {
+                            countries.forEach { c ->
+                                DropdownMenuItem(
+                                    text = { Text(c) },
+                                    onClick = { selectedCountry = c; countryExpanded = false }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (filteredSessions.isEmpty()) {
                     Box(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "No completed races found.",
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 14.sp
                         )
                     }
@@ -955,9 +1063,9 @@ fun HistoricalSessionPickerDialog(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(sessions) { session ->
+                        items(filteredSessions) { session ->
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF2C2C35)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { onSelectSession(session.sessionKey) }
@@ -970,13 +1078,13 @@ fun HistoricalSessionPickerDialog(
                                         Text(
                                             text = session.sessionName,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color.White,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             fontSize = 14.sp
                                         )
                                         Text(
                                             text = session.sessionType.uppercase(),
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFFE10600),
+                                            color = MaterialTheme.colorScheme.primary,
                                             fontSize = 10.sp,
                                             fontFamily = FontFamily.Monospace
                                         )
@@ -984,7 +1092,7 @@ fun HistoricalSessionPickerDialog(
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = "${session.location}, ${session.countryName}",
-                                        color = Color.LightGray,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 12.sp
                                     )
                                     val date = try {
@@ -995,7 +1103,7 @@ fun HistoricalSessionPickerDialog(
                                     if (date.isNotEmpty()) {
                                         Text(
                                             text = "Date: $date",
-                                            color = Color.Gray,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 11.sp
                                         )
                                     }
@@ -1012,7 +1120,7 @@ fun HistoricalSessionPickerDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel", color = Color.LightGray)
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
