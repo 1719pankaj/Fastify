@@ -87,6 +87,52 @@ def start_live(req: LiveStartReq):
     threading.Thread(target=f1_data.fetch_all_data).start()
     return {"message": f"Live tracking started for session {req.session_key}"}
 
+class SeekReq(BaseModel):
+    offset_seconds: int
+
+class SpeedReq(BaseModel):
+    speed: float
+
+@app.post("/api/simulation/pause")
+def pause_simulation():
+    f1_data.pause_simulation()
+    return {"message": "Simulation paused"}
+
+@app.post("/api/simulation/resume")
+def resume_simulation():
+    f1_data.resume_simulation()
+    return {"message": "Simulation resumed"}
+
+@app.post("/api/simulation/seek")
+def seek_simulation(req: SeekReq):
+    f1_data.seek_simulation(req.offset_seconds)
+    return {"message": f"Simulation seeked to offset {req.offset_seconds} seconds"}
+
+@app.post("/api/simulation/speed")
+def speed_simulation(req: SpeedReq):
+    f1_data.set_simulation_speed(req.speed)
+    return {"message": f"Simulation speed set to {req.speed}x"}
+
+@app.get("/api/simulation/sessions")
+def get_simulation_sessions():
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    completed_sessions = []
+    with f1_data.lock:
+        for s in f1_data.schedule:
+            de = s.get('date_end')
+            if de and de.replace('Z', '+00:00') < now:
+                completed_sessions.append({
+                    "session_key": s.get("session_key"),
+                    "session_name": s.get("session_name"),
+                    "session_type": s.get("session_type"),
+                    "location": s.get("location"),
+                    "country_name": s.get("country_name"),
+                    "date_start": s.get("date_start"),
+                    "date_end": s.get("date_end")
+                })
+    return completed_sessions
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

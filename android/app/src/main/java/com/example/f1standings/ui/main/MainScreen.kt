@@ -34,6 +34,11 @@ import com.example.f1standings.data.F1Repository
 import com.example.f1standings.data.WidgetState
 import com.example.f1standings.data.ScheduleResponse
 import com.example.f1standings.data.ScheduledSession
+import com.example.f1standings.data.HistoricalSession
+import com.example.f1standings.data.SessionInfo
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.foundation.BorderStroke
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,8 +55,10 @@ fun MainScreen(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val baseUrl by viewModel.baseUrl.collectAsStateWithLifecycle()
+    val historicalSessions by viewModel.historicalSessions.collectAsStateWithLifecycle()
 
     var showSettings by remember { mutableStateOf(false) }
+    var showReplayPicker by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -88,6 +95,23 @@ fun MainScreen(
             // Track status banner
             TrackStatusBanner(widgetState = widgetState)
 
+            // Replay Controls (Only shown during simulation mode)
+            if (widgetState?.session?.status == "simulation") {
+                ReplayControlPanel(
+                    sessionInfo = widgetState?.session,
+                    onPlayPauseToggle = {
+                        val isPaused = widgetState?.session?.paused == true
+                        if (isPaused) viewModel.resumeSimulation() else viewModel.pauseSimulation()
+                    },
+                    onSeek = { offset ->
+                        viewModel.seekSimulation(offset)
+                    },
+                    onSpeedChange = { speed ->
+                        viewModel.changeSpeed(speed)
+                    }
+                )
+            }
+
             // Connection Error Banner
             AnimatedVisibility(visible = error != null) {
                 Card(
@@ -114,7 +138,15 @@ fun MainScreen(
                     }
                 } else if (widgetState == null || widgetState?.standings.isNullOrEmpty()) {
                     // Show next session info if available
-                    NoActiveSessionScreen(schedule, baseUrl) { showSettings = true }
+                    NoActiveSessionScreen(
+                        schedule = schedule,
+                        baseUrl = baseUrl,
+                        onSettingsClick = { showSettings = true },
+                        onReplayClick = {
+                            viewModel.fetchHistoricalSessions()
+                            showReplayPicker = true
+                        }
+                    )
                 } else {
                     StandingsList(widgetState!!)
                 }
@@ -144,6 +176,17 @@ fun MainScreen(
             onStartLive = { session ->
                 viewModel.startLive(session)
                 showSettings = false
+            }
+        )
+    }
+
+    if (showReplayPicker) {
+        HistoricalSessionPickerDialog(
+            sessions = historicalSessions,
+            onDismiss = { showReplayPicker = false },
+            onSelectSession = { sessionKey ->
+                viewModel.startSimulation(sessionKey, 1.0)
+                showReplayPicker = false
             }
         )
     }
@@ -442,7 +485,8 @@ fun RaceControlTicker(logs: List<String>) {
 fun NoActiveSessionScreen(
     schedule: ScheduleResponse?,
     baseUrl: String,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onReplayClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -505,11 +549,21 @@ fun NoActiveSessionScreen(
 
         Button(
             onClick = onSettingsClick,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE10600))
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE10600)),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Text("Open App Settings", color = Color.White)
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onReplayClick,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+            border = BorderStroke(1.dp, Color.White),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Replay a Past Race", fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = "Currently connected to:\n$baseUrl",
             fontSize = 11.sp,
@@ -659,5 +713,289 @@ fun formatLapTime(seconds: Double?): String {
         String.format("%d:%06.3f", mins, secs)
     } else {
         String.format("%.3f", secs)
+    }
+}
+
+@Composable
+fun ReplayControlPanel(
+    sessionInfo: SessionInfo?,
+    onPlayPauseToggle: () -> Unit,
+    onSeek: (Int) -> Unit,
+    onSpeedChange: (Double) -> Unit
+) {
+    if (sessionInfo == null) return
+
+    val dateStartStr = sessionInfo.dateStart ?: ""
+    val dateEndStr = sessionInfo.dateEnd ?: ""
+    val virtualTimeStr = sessionInfo.virtualTime ?: ""
+    val isPaused = sessionInfo.paused == true
+    val currentSpeed = sessionInfo.speed ?: 1.0
+
+    // Parse ISO-8601 helper
+    fun parseIso(isoStr: String): Long {
+        if (isoStr.isEmpty()) return 0L
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                java.time.OffsetDateTime.parse(isoStr).toEpochSecond()
+            } else {
+                val clean = isoStr.replace("Z", "+00:00")
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                (sdf.parse(clean)?.time ?: 0L) / 1000
+            }
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
+    val startTime = remember(dateStartStr) { parseIso(dateStartStr) }
+    val endTime = remember(dateEndStr) { parseIso(dateEndStr) }
+    val virtualTime = remember(virtualTimeStr) { parseIso(virtualTimeStr) }
+
+    val totalDuration = (endTime - startTime).coerceAtLeast(0L)
+    val elapsed = (virtualTime - startTime).coerceAtLeast(0L).coerceAtMost(totalDuration)
+
+    // Local slider state
+    var sliderPosition by remember { mutableStateOf(elapsed.toFloat()) }
+    var isScrubbing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(elapsed) {
+        if (!isScrubbing) {
+            sliderPosition = elapsed.toFloat()
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Card(
+            shape = RoundedCornerShape(0.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C24)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                // Seekbar
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = formatDuration(sliderPosition.toLong()),
+                        fontSize = 11.sp,
+                        color = Color.LightGray,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.width(55.dp)
+                    )
+
+                    Slider(
+                        value = sliderPosition,
+                        onValueChange = {
+                            isScrubbing = true
+                            sliderPosition = it
+                        },
+                        onValueChangeFinished = {
+                            isScrubbing = false
+                            onSeek(sliderPosition.toInt())
+                        },
+                        valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = Color(0xFFE10600),
+                            inactiveTrackColor = Color.DarkGray,
+                            thumbColor = Color(0xFFE10600)
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Text(
+                        text = formatDuration(totalDuration),
+                        fontSize = 11.sp,
+                        color = Color.LightGray,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.width(55.dp),
+                        textAlign = TextAlign.End
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Playback controls row
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Play / Pause button
+                    Button(
+                        onClick = onPlayPauseToggle,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isPaused) Color(0xFF388E3C) else Color(0xFFE10600)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text(
+                            text = if (isPaused) "PLAY" else "PAUSE",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    // Speed controls
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "SPEED: ",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        listOf(1.0, 2.0, 5.0, 10.0, 20.0).forEach { speedVal ->
+                            val isSelected = currentSpeed == speedVal
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isSelected) Color(0xFFE10600) else Color(0xFF2C2C35))
+                                    .clickable { onSpeedChange(speedVal) }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "${speedVal.toInt()}x",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.White else Color.LightGray,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalDivider(color = Color.DarkGray, thickness = 1.dp)
+    }
+}
+
+@Composable
+fun HistoricalSessionPickerDialog(
+    sessions: List<HistoricalSession>,
+    onDismiss: () -> Unit,
+    onSelectSession: (Int) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E28)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.8f)
+                .padding(8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxSize()
+            ) {
+                Text(
+                    text = "REPLAY A PAST RACE",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Color.White,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                if (sessions.isEmpty()) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No completed races found.",
+                            color = Color.Gray,
+                            fontSize = 14.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(sessions) { session ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF2C2C35)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelectSession(session.sessionKey) }
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = session.sessionName,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = session.sessionType.uppercase(),
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFFE10600),
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "${session.location}, ${session.countryName}",
+                                        color = Color.LightGray,
+                                        fontSize = 12.sp
+                                    )
+                                    val date = try {
+                                        session.dateStart.substringBefore("T")
+                                    } catch (e: Exception) {
+                                        ""
+                                    }
+                                    if (date.isNotEmpty()) {
+                                        Text(
+                                            text = "Date: $date",
+                                            color = Color.Gray,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = Color.LightGray)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun formatDuration(totalSeconds: Long): String {
+    val hrs = totalSeconds / 3600
+    val mins = (totalSeconds % 3600) / 60
+    val secs = totalSeconds % 60
+    return if (hrs > 0) {
+        String.format("%d:%02d:%02d", hrs, mins, secs)
+    } else {
+        String.format("%02d:%02d", mins, secs)
     }
 }

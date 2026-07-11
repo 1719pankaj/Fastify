@@ -16,7 +16,25 @@ interface F1ApiService {
 
     @POST("api/live/start")
     suspend fun startLive(@Body body: LiveStartRequest): Map<String, String>
+
+    @GET("api/simulation/sessions")
+    suspend fun getHistoricalSessions(): List<HistoricalSession>
+
+    @POST("api/simulation/pause")
+    suspend fun pauseSimulation(): Map<String, String>
+
+    @POST("api/simulation/resume")
+    suspend fun resumeSimulation(): Map<String, String>
+
+    @POST("api/simulation/seek")
+    suspend fun seekSimulation(@Body body: SeekRequest): Map<String, String>
+
+    @POST("api/simulation/speed")
+    suspend fun changeSpeed(@Body body: SpeedRequest): Map<String, String>
 }
+
+data class SeekRequest(val offset_seconds: Int)
+data class SpeedRequest(val speed: Double)
 
 data class SimulationStartRequest(
     val session_key: Int,

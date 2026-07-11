@@ -67,4 +67,24 @@ class F1Repository(context: Context) {
     suspend fun startLive(sessionKey: String): Map<String, String> {
         return apiService.startLive(LiveStartRequest(sessionKey))
     }
+
+    suspend fun getHistoricalSessions(): List<HistoricalSession> {
+        return apiService.getHistoricalSessions()
+    }
+
+    suspend fun pauseSimulation(): Map<String, String> {
+        return apiService.pauseSimulation()
+    }
+
+    suspend fun resumeSimulation(): Map<String, String> {
+        return apiService.resumeSimulation()
+    }
+
+    suspend fun seekSimulation(offsetSeconds: Int): Map<String, String> {
+        return apiService.seekSimulation(SeekRequest(offsetSeconds))
+    }
+
+    suspend fun changeSpeed(speed: Double): Map<String, String> {
+        return apiService.changeSpeed(SpeedRequest(speed))
+    }
 }

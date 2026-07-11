@@ -6,7 +6,21 @@ data class SessionInfo(
     val name: String,
     val status: String,
     @SerializedName("virtual_time") val virtualTime: String?,
-    val flag: String
+    val flag: String,
+    @SerializedName("date_start") val dateStart: String?,
+    @SerializedName("date_end") val dateEnd: String?,
+    val speed: Double?,
+    val paused: Boolean?
+)
+
+data class HistoricalSession(
+    @SerializedName("session_key") val sessionKey: Int,
+    @SerializedName("session_name") val sessionName: String,
+    @SerializedName("session_type") val sessionType: String,
+    val location: String,
+    @SerializedName("country_name") val countryName: String,
+    @SerializedName("date_start") val dateStart: String,
+    @SerializedName("date_end") val dateEnd: String
 )
 
 data class DriverStanding(

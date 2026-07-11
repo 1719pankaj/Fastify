@@ -24,6 +24,8 @@ class F1DataAggregator:
         self.simulation_speed = 1.0
         self.simulation_start_real = None
         self.simulation_start_virtual = None
+        self.simulation_paused = False
+        self.paused_virtual_time = None
         
         self.lock = threading.Lock()
 
@@ -32,6 +34,8 @@ class F1DataAggregator:
             self.session_key = session_key
             self.mode = mode
             self.simulation_speed = speed
+            self.simulation_paused = False
+            self.paused_virtual_time = None
             # Clear caches
             self.drivers = {}
             self.positions = []
@@ -114,6 +118,8 @@ class F1DataAggregator:
         self.fetch_all_data()
         
         with self.lock:
+            self.simulation_paused = False
+            self.paused_virtual_time = None
             if self.session_info and 'date_start' in self.session_info:
                 # Start virtual time at the session start
                 try:
@@ -129,12 +135,14 @@ class F1DataAggregator:
             self.simulation_start_real = datetime.datetime.now(datetime.timezone.utc)
 
     def _get_current_time(self):
-        if self.mode == "simulation" and self.simulation_start_real and self.simulation_start_virtual:
-            now = datetime.datetime.now(datetime.timezone.utc)
-            elapsed = (now - self.simulation_start_real).total_seconds()
-            return self.simulation_start_virtual + datetime.timedelta(seconds=elapsed * self.simulation_speed)
-        else:
-            return datetime.datetime.now(datetime.timezone.utc)
+        if self.mode == "simulation":
+            if self.simulation_paused:
+                return self.paused_virtual_time
+            if self.simulation_start_real and self.simulation_start_virtual:
+                now = datetime.datetime.now(datetime.timezone.utc)
+                elapsed = (now - self.simulation_start_real).total_seconds()
+                return self.simulation_start_virtual + datetime.timedelta(seconds=elapsed * self.simulation_speed)
+        return datetime.datetime.now(datetime.timezone.utc)
 
     def get_widget_state(self):
         with self.lock:
@@ -230,10 +238,52 @@ class F1DataAggregator:
                     "name": self.session_info.get("session_name", "Unknown"),
                     "status": self.mode,
                     "virtual_time": ct_iso,
-                    "flag": current_flag
+                    "flag": current_flag,
+                    "date_start": self.session_info.get("date_start"),
+                    "date_end": self.session_info.get("date_end"),
+                    "speed": self.simulation_speed,
+                    "paused": self.simulation_paused
                 },
                 "standings": standings_list,
                 "race_control": recent_messages
             }
+
+    def pause_simulation(self):
+        with self.lock:
+            if self.mode == "simulation" and not self.simulation_paused:
+                self.paused_virtual_time = self._get_current_time()
+                self.simulation_paused = True
+
+    def resume_simulation(self):
+        with self.lock:
+            if self.mode == "simulation" and self.simulation_paused:
+                self.simulation_start_virtual = self.paused_virtual_time
+                self.simulation_start_real = datetime.datetime.now(datetime.timezone.utc)
+                self.simulation_paused = False
+
+    def seek_simulation(self, offset_seconds):
+        with self.lock:
+            if self.mode == "simulation" and self.session_info and 'date_start' in self.session_info:
+                try:
+                    ds = self.session_info['date_start'].replace('Z', '+00:00')
+                    start_virtual = datetime.datetime.fromisoformat(ds)
+                    target_virtual = start_virtual + datetime.timedelta(seconds=offset_seconds)
+                    
+                    if self.simulation_paused:
+                        self.paused_virtual_time = target_virtual
+                    else:
+                        self.simulation_start_virtual = target_virtual
+                        self.simulation_start_real = datetime.datetime.now(datetime.timezone.utc)
+                except Exception as e:
+                    print("Seek error", e)
+
+    def set_simulation_speed(self, speed):
+        with self.lock:
+            if self.mode == "simulation":
+                current_virtual = self._get_current_time()
+                self.simulation_speed = speed
+                if not self.simulation_paused:
+                    self.simulation_start_virtual = current_virtual
+                    self.simulation_start_real = datetime.datetime.now(datetime.timezone.utc)
 
 f1_data = F1DataAggregator()
