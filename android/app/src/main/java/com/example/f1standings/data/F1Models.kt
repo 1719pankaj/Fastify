@@ -34,7 +34,9 @@ data class DriverStanding(
     @SerializedName("last_lap_time") val lastLapTime: Double?,
     @SerializedName("best_lap_time") val bestLapTime: Double?,
     @SerializedName("tyre_compound") val tyreCompound: String?,
-    @SerializedName("tyre_age") val tyreAge: Int
+    @SerializedName("tyre_age") val tyreAge: Int,
+    @SerializedName("gap_to_leader") val gapToLeader: String?,
+    @SerializedName("interval") val interval: String?
 )
 
 data class WidgetState(

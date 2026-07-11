@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -73,6 +74,12 @@ fun MainScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = { 
+                        viewModel.fetchHistoricalSessions()
+                        showReplayPicker = true 
+                    }) {
+                        Icon(Icons.Default.List, contentDescription = "History", tint = Color.White)
+                    }
                     IconButton(onClick = { viewModel.refreshData() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color.White)
                     }
@@ -345,7 +352,7 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                 Spacer(modifier = Modifier.width(12.dp))
 
                 // Driver details
-                Column(modifier = Modifier.weight(1.3f)) {
+                Column(modifier = Modifier.weight(1.1f)) {
                     Text(
                         text = driver.nameAcronym,
                         fontWeight = FontWeight.Bold,
@@ -368,10 +375,34 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                     )
                 }
 
+                // Gaps
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    modifier = Modifier.weight(0.9f).padding(end = 4.dp)
+                ) {
+                    Text(
+                        text = driver.gapToLeader ?: "--",
+                        fontSize = 12.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = driver.interval ?: "",
+                        fontSize = 10.sp,
+                        color = Color.LightGray,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 // Tyre Information
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(0.9f)
+                    modifier = Modifier.weight(0.7f)
                 ) {
                     TyreCompoundBadge(driver.tyreCompound)
                     Spacer(modifier = Modifier.height(2.dp))
@@ -385,7 +416,7 @@ fun DriverRow(driver: DriverStanding, isFastestLap: Boolean) {
                 // Laps & Timings
                 Column(
                     horizontalAlignment = Alignment.End,
-                    modifier = Modifier.weight(1.3f)
+                    modifier = Modifier.weight(1.2f)
                 ) {
                     Text(
                         text = "Laps: ${driver.lapsCompleted}",

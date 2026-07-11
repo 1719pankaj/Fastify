@@ -83,7 +83,7 @@ class F1ViewModel(private val repository: F1Repository) : ViewModel() {
                 } catch (e: Exception) {
                     _error.value = "Connection error: ${e.localizedMessage}"
                 }
-                delay(10000)
+                delay(200)
             }
         }
     }

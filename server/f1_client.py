@@ -15,6 +15,7 @@ class F1DataAggregator:
         self.laps = []
         self.stints = []
         self.race_control = []
+        self.intervals = []
         self.session_info = {}
         self.schedule = [] # Caches all sessions for the year
         
@@ -42,6 +43,7 @@ class F1DataAggregator:
             self.laps = []
             self.stints = []
             self.race_control = []
+            self.intervals = []
             self.session_info = {}
 
     def fetch_schedule(self):
@@ -104,12 +106,14 @@ class F1DataAggregator:
         laps = fetch("laps")
         stints = fetch("stints")
         race_control = fetch("race_control")
+        intervals = fetch("intervals")
         
         with self.lock:
             self.positions = positions
             self.laps = laps
             self.stints = stints
             self.race_control = race_control
+            self.intervals = intervals
             
         print(f"Data fetched: {len(self.positions)} positions, {len(self.laps)} laps, {len(self.stints)} stints, {len(self.race_control)} RC messages")
 
@@ -172,7 +176,9 @@ class F1DataAggregator:
                     "last_lap_time": None,
                     "best_lap_time": None,
                     "tyre_compound": None,
-                    "tyre_age": 0
+                    "tyre_age": 0,
+                    "gap_to_leader": None,
+                    "interval": None
                 }
 
             # Latest positions
@@ -221,6 +227,24 @@ class F1DataAggregator:
                     tyre_age_at_start = current_stint.get('tyre_age_at_start', 0)
                     # Current age = tyre_age_at_start + (current_lap - stint_start_lap)
                     standings_dict[drv_num]['tyre_age'] = tyre_age_at_start + (current_lap - stint_start_lap)
+
+            # Intervals
+            valid_intervals = [i for i in self.intervals if is_past(i)]
+            latest_intervals = {}
+            for i in valid_intervals:
+                drv_num = i.get('driver_number')
+                latest_intervals[drv_num] = i
+                
+            def format_gap(val):
+                if val is None: return None
+                if isinstance(val, (int, float)):
+                    return f"+{val:.3f}s"
+                return str(val)
+
+            for drv_num, interval_data in latest_intervals.items():
+                if drv_num in standings_dict:
+                    standings_dict[drv_num]['gap_to_leader'] = format_gap(interval_data.get('gap_to_leader'))
+                    standings_dict[drv_num]['interval'] = format_gap(interval_data.get('interval'))
 
             # Race control
             valid_rc = [rc for rc in self.race_control if is_past(rc)]
