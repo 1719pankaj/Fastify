@@ -32,6 +32,9 @@ def startup_event():
     t = threading.Thread(target=live_poll_worker, daemon=True)
     t.start()
     
+    # Fetch schedule for the year
+    threading.Thread(target=f1_data.fetch_schedule).start()
+    
     # Auto-start simulation for testing out-of-the-box
     print(f"Starting default simulation with session {DEFAULT_SIMULATION_SESSION_KEY}...")
     # Doing this in a background thread so we don't block server startup
@@ -40,6 +43,14 @@ def startup_event():
 @app.on_event("shutdown")
 def shutdown_event():
     stop_live_poll.set()
+
+@app.get("/api/schedule")
+def get_schedule():
+    """Returns the next scheduled session for the Android widget to wake up to"""
+    session = f1_data.get_next_session()
+    if session:
+        return {"status": "scheduled", "next_session": session}
+    return {"status": "no_upcoming_sessions"}
 
 @app.get("/api/widget")
 def get_widget_data():

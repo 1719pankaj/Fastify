@@ -16,6 +16,8 @@ class F1DataAggregator:
         self.stints = []
         self.race_control = []
         self.session_info = {}
+        self.schedule = [] # Caches all sessions for the year
+        
         
         # Virtual clock for simulation
         self.virtual_time = None
@@ -37,6 +39,36 @@ class F1DataAggregator:
             self.stints = []
             self.race_control = []
             self.session_info = {}
+
+    def fetch_schedule(self):
+        """Fetches the current year's sessions to determine upcoming schedule"""
+        try:
+            year = datetime.datetime.now(datetime.timezone.utc).year
+            res = requests.get(f"{OPENF1_BASE_URL}/sessions?year={year}")
+            if res.status_code == 200:
+                with self.lock:
+                    self.schedule = res.json()
+                print(f"Schedule fetched: {len(self.schedule)} sessions found for {year}")
+        except Exception as e:
+            print(f"Error fetching schedule: {e}")
+
+    def get_next_session(self):
+        """Returns the next scheduled session based on current time"""
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        upcoming = []
+        with self.lock:
+            for s in self.schedule:
+                # Use date_start
+                ds = s.get('date_start')
+                if ds:
+                    ds_iso = ds.replace('Z', '+00:00')
+                    if ds_iso > now:
+                        upcoming.append(s)
+            
+            if upcoming:
+                upcoming.sort(key=lambda x: x.get('date_start'))
+                return upcoming[0]
+            return None
 
     def fetch_all_data(self):
         """Fetch all necessary data for the current session. Blocking call."""
