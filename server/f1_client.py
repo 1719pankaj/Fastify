@@ -77,11 +77,11 @@ class F1DataAggregator:
             return None
 
     def fetch_all_data(self):
-        """Fetch all necessary data for the current session. Blocking call."""
+        """Fetch all necessary data for the current session. Blocking call. Only used for simulation/historical now."""
         if not self.session_key:
             return
             
-        print(f"Fetching data for session {self.session_key}...")
+        print(f"Fetching historical data from OpenF1 for session {self.session_key}...")
         
         def fetch(endpoint):
             try:
@@ -116,6 +116,99 @@ class F1DataAggregator:
             self.intervals = intervals
             
         print(f"Data fetched: {len(self.positions)} positions, {len(self.laps)} laps, {len(self.stints)} stints, {len(self.race_control)} RC messages")
+
+    async def _live_loop(self):
+        import asyncio
+        import json
+        import websockets
+        hub = "Streaming"
+        negotiate_url = f"https://livetiming.formula1.com/signalr/negotiate?clientProtocol=1.5&connectionData=[%7B%22name%22:%22{hub}%22%7D]"
+        try:
+            res = requests.get(negotiate_url)
+            token = res.json()['ConnectionToken']
+            url = f"wss://livetiming.formula1.com/signalr/connect?clientProtocol=1.5&transport=webSockets&connectionToken={token}&connectionData=[%7B%22name%22:%22{hub}%22%7D]"
+            
+            async with websockets.connect(url) as ws:
+                subscribe_msg = {
+                    "H": hub,
+                    "M": "Subscribe",
+                    "A": [["TimingData", "TrackStatus", "RaceControlMessages", "DriverList"]],
+                    "I": 1
+                }
+                await ws.send(json.dumps(subscribe_msg))
+                print("Connected to F1 SignalR for Live Data")
+                
+                while self.mode == "live":
+                    msg = await ws.recv()
+                    data = json.loads(msg)
+                    if 'M' in data:
+                        for m in data['M']:
+                            if m['M'] == 'feed':
+                                topic = m['A'][0]
+                                payload = m['A'][1]
+                                self._handle_live_msg(topic, payload)
+        except Exception as e:
+            print("Live WS error", e)
+
+    def _handle_live_msg(self, topic, payload):
+        ct_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with self.lock:
+            if topic == "DriverList":
+                for k, v in payload.items():
+                    try:
+                        num = int(k)
+                        if num not in self.drivers:
+                            self.drivers[num] = {"driver_number": num}
+                        self.drivers[num]["name_acronym"] = v.get("Tla", "")
+                        self.drivers[num]["full_name"] = v.get("FirstName", "") + " " + v.get("LastName", "")
+                        self.drivers[num]["team_name"] = v.get("TeamName", "")
+                        self.drivers[num]["team_colour"] = v.get("TeamColour", "")
+                    except: pass
+            elif topic == "TrackStatus":
+                val = payload.get("Status", "1")
+                flags = {"1":"GREEN", "2":"YELLOW", "4":"SC", "5":"RED", "6":"VSC"}
+                self.race_control.append({"date": ct_iso, "category": "Flag", "flag": flags.get(val, "GREEN")})
+            elif topic == "RaceControlMessages":
+                if "Messages" in payload:
+                    for msg in payload["Messages"]:
+                        self.race_control.append({"date": ct_iso, "message": msg.get("Message", "")})
+            elif topic == "TimingData":
+                if "Lines" in payload:
+                    for k, v in payload["Lines"].items():
+                        try:
+                            num = int(k)
+                            
+                            # Positions
+                            if "Position" in v: 
+                                self.positions.append({"date": ct_iso, "driver_number": num, "position": int(v["Position"])})
+                            
+                            # Intervals
+                            if "GapToLeader" in v or "IntervalToPositionAhead" in v:
+                                interval_obj = {"date": ct_iso, "driver_number": num}
+                                if "GapToLeader" in v: 
+                                    interval_obj["gap_to_leader"] = v["GapToLeader"]
+                                if "IntervalToPositionAhead" in v:
+                                    val = v["IntervalToPositionAhead"]
+                                    interval_obj["interval"] = val.get("Value") if isinstance(val, dict) else val
+                                self.intervals.append(interval_obj)
+                            
+                            # Laps
+                            if "NumberOfLaps" in v or "BestLapTime" in v or "LastLapTime" in v:
+                                lap_obj = {"date_start": ct_iso, "driver_number": num}
+                                if "LastLapTime" in v and isinstance(v["LastLapTime"], dict):
+                                    lap_obj["lap_duration"] = v["LastLapTime"].get("Value")
+                                self.laps.append(lap_obj)
+                                
+                            # Stints
+                            if "Stints" in v and isinstance(v["Stints"], list) and len(v["Stints"]) > 0:
+                                last_stint = v["Stints"][-1]
+                                stint_obj = {"driver_number": num, "stint_number": len(v["Stints"]), "lap_start": 0, "tyre_age_at_start": 0}
+                                if "Compound" in last_stint: stint_obj["compound"] = last_stint["Compound"]
+                                if "TotalLaps" in last_stint: stint_obj["lap_start"] = int(v.get("NumberOfLaps", 0)) - int(last_stint["TotalLaps"])
+                                self.stints.append(stint_obj)
+
+                        except Exception as e:
+                            print("Timing parse err", e)
 
     def start_simulation(self, session_key, speed=1.0):
         self.set_session(session_key, mode="simulation", speed=speed)

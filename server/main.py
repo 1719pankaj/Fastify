@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import threading
 import time
+import asyncio
 
 from config import DEFAULT_SIMULATION_SESSION_KEY, LIVE_POLL_INTERVAL
 from f1_client import f1_data
@@ -18,20 +19,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-stop_live_poll = threading.Event()
-
-def live_poll_worker():
-    while not stop_live_poll.is_set():
-        if f1_data.mode == "live" and f1_data.session_key:
-            f1_data.fetch_all_data()
-        time.sleep(LIVE_POLL_INTERVAL)
-
 @app.on_event("startup")
 def startup_event():
-    # Start the background poller thread
-    t = threading.Thread(target=live_poll_worker, daemon=True)
-    t.start()
-    
     # Fetch schedule for the year
     threading.Thread(target=f1_data.fetch_schedule).start()
     
@@ -42,7 +31,7 @@ def startup_event():
 
 @app.on_event("shutdown")
 def shutdown_event():
-    stop_live_poll.set()
+    pass
 
 @app.get("/api/schedule")
 def get_schedule():
@@ -83,9 +72,12 @@ class LiveStartReq(BaseModel):
 @app.post("/api/live/start")
 def start_live(req: LiveStartReq):
     f1_data.set_session(req.session_key, mode="live")
-    # trigger an immediate fetch
-    threading.Thread(target=f1_data.fetch_all_data).start()
-    return {"message": f"Live tracking started for session {req.session_key}"}
+    
+    # Start the async live loop in the current asyncio event loop
+    loop = asyncio.get_event_loop()
+    loop.create_task(f1_data._live_loop())
+    
+    return {"message": f"Live tracking started for session {req.session_key} using SignalR websocket"}
 
 class SeekReq(BaseModel):
     offset_seconds: int

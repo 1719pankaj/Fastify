@@ -2,3 +2,8 @@ fastapi
 uvicorn[standard]
 requests
 pydantic
+
+fastf1
+websockets
+signalr-aio
+pandas
