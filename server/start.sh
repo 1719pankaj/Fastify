@@ -15,4 +15,4 @@ sleep 3
 
 # Start Cloudflare Tunnel and redirect logs
 # This runs in the foreground so systemd can track the process
-cloudflared tunnel run --url http://localhost:8000 f1-widget > tunnel.log 2>&1
+cloudflared tunnel run f1-widget > tunnel.log 2>&1
