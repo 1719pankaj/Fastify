@@ -68,115 +68,112 @@ fun MainScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showReplayPicker by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        Box(
-            modifier = modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Track status banner
-                TrackStatusBanner(widgetState = widgetState)
+    val isSimulation = widgetState?.session?.status == "simulation"
 
-                // Connection Error Banner
-                AnimatedVisibility(visible = error != null) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                    ) {
-                        Text(
-                            text = error ?: "",
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(12.dp),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+    // No Scaffold — it adds unwanted padding from enableEdgeToEdge().
+    // Use a Box with statusBars inset so content starts right below the status bar.
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Track status banner
+            TrackStatusBanner(widgetState = widgetState)
 
-                // Race control ticker — inline, not floating
-                widgetState?.raceControl?.let { logs ->
-                    if (logs.isNotEmpty()) {
-                        RaceControlTicker(logs = logs)
-                    }
-                }
-
-                // Main Standings List or Next Session Info
-                Box(modifier = Modifier.weight(1f)) {
-                    if (widgetState == null && isRefreshing) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        }
-                    } else if (widgetState == null || widgetState?.standings.isNullOrEmpty()) {
-                        NoActiveSessionScreen(
-                            schedule = schedule,
-                            baseUrl = baseUrl,
-                            onSettingsClick = { showSettings = true },
-                            onReplayClick = {
-                                viewModel.fetchHistoricalSessions()
-                                showReplayPicker = true
-                            }
-                        )
-                    } else {
-                        StandingsList(widgetState!!)
-                    }
-                }
-
-                // Replay Controls — inline at the bottom of Column, not floating
-                if (widgetState?.session?.status == "simulation") {
-                    ReplayControlPanel(
-                        sessionInfo = widgetState?.session,
-                        onPlayPauseToggle = {
-                            val isPaused = widgetState?.session?.paused == true
-                            if (isPaused) viewModel.resumeSimulation() else viewModel.pauseSimulation()
-                        },
-                        onSeek = { offset ->
-                            viewModel.seekSimulation(offset)
-                        },
-                        onSpeedChange = { speed ->
-                            viewModel.changeSpeed(speed)
-                        }
+            // Connection Error Banner
+            AnimatedVisibility(visible = error != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Text(
+                        text = error ?: "",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(12.dp),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
 
-            // Small Floating Action Pill — only this floats
-            Card(
-                shape = RoundedCornerShape(50),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                elevation = CardDefaults.cardElevation(6.dp),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    IconButton(
-                        onClick = { 
+            // Race control ticker — inline
+            widgetState?.raceControl?.let { logs ->
+                if (logs.isNotEmpty()) {
+                    RaceControlTicker(logs = logs)
+                }
+            }
+
+            // Main Standings List or Next Session Info — takes all remaining vertical space
+            Box(modifier = Modifier.weight(1f)) {
+                if (widgetState == null && isRefreshing) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
+                } else if (widgetState == null || widgetState?.standings.isNullOrEmpty()) {
+                    NoActiveSessionScreen(
+                        schedule = schedule,
+                        baseUrl = baseUrl,
+                        onSettingsClick = { showSettings = true },
+                        onReplayClick = {
                             viewModel.fetchHistoricalSessions()
-                            showReplayPicker = true 
-                        },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                            showReplayPicker = true
+                        }
+                    )
+                } else {
+                    StandingsList(widgetState!!)
+                }
+            }
+
+            // Bottom bar — docked at the bottom of the Column. Never floats.
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 3.dp,
+                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Replay seekbar + speed (only during simulation)
+                    if (isSimulation) {
+                        ReplayControlPanel(
+                            sessionInfo = widgetState?.session,
+                            onPlayPauseToggle = {
+                                val isPaused = widgetState?.session?.paused == true
+                                if (isPaused) viewModel.resumeSimulation() else viewModel.pauseSimulation()
+                            },
+                            onSeek = { offset ->
+                                viewModel.seekSimulation(offset)
+                            },
+                            onSpeedChange = { speed ->
+                                viewModel.changeSpeed(speed)
+                            }
+                        )
                     }
-                    IconButton(
-                        onClick = { viewModel.refreshData() },
-                        modifier = Modifier.size(40.dp)
+
+                    // Action buttons row — always visible at the very bottom
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
-                    }
-                    IconButton(
-                        onClick = { showSettings = true },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                        IconButton(
+                            onClick = {
+                                viewModel.fetchHistoricalSessions()
+                                showReplayPicker = true
+                            }
+                        ) {
+                            Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { viewModel.refreshData() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -308,7 +305,7 @@ fun StandingsList(state: WidgetState) {
         .minOfOrNull { it.bestLapTime!! }
 
     LazyColumn(
-        contentPadding = PaddingValues(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 72.dp),
+        contentPadding = PaddingValues(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.fillMaxSize()
     ) {
@@ -823,117 +820,115 @@ fun ReplayControlPanel(
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-            elevation = CardDefaults.cardElevation(8.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        // Seekbar
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                // Seekbar
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = formatDuration(sliderPosition.toLong()),
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.width(55.dp)
-                    )
+            Text(
+                text = formatDuration(sliderPosition.toLong()),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.width(50.dp)
+            )
 
-                    Slider(
-                        value = sliderPosition,
-                        onValueChange = {
-                            isScrubbing = true
-                            sliderPosition = it
-                        },
-                        onValueChangeFinished = {
-                            isScrubbing = false
-                            onSeek(sliderPosition.toInt())
-                        },
-                        valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
-                        colors = SliderDefaults.colors(
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                            thumbColor = MaterialTheme.colorScheme.primary
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
+            Slider(
+                value = sliderPosition,
+                onValueChange = {
+                    isScrubbing = true
+                    sliderPosition = it
+                },
+                onValueChangeFinished = {
+                    isScrubbing = false
+                    onSeek(sliderPosition.toInt())
+                },
+                valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
+                colors = SliderDefaults.colors(
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    thumbColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.weight(1f)
+            )
 
-                    Text(
-                        text = formatDuration(totalDuration),
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.width(55.dp),
-                        textAlign = TextAlign.End
-                    )
-                }
+            Text(
+                text = formatDuration(totalDuration),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.width(50.dp),
+                textAlign = TextAlign.End
+            )
+        }
 
-                Spacer(modifier = Modifier.height(4.dp))
+        // Playback controls row
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Play / Pause button
+            Button(
+                onClick = onPlayPauseToggle,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isPaused) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.height(32.dp)
+            ) {
+                Text(
+                    text = if (isPaused) "PLAY" else "PAUSE",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
-                // Playback controls row
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // Play / Pause button
-                    Button(
-                        onClick = onPlayPauseToggle,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isPaused) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier.height(32.dp)
+            // Speed controls
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "SPEED:",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace
+                )
+                listOf(1.0, 2.0, 5.0, 10.0, 20.0).forEach { speedVal ->
+                    val isSelected = currentSpeed == speedVal
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { onSpeedChange(speedVal) }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = if (isPaused) "PLAY" else "PAUSE",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    // Speed controls
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "SPEED: ",
-                            fontSize = 11.sp,
+                            text = "${speedVal.toInt()}x",
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = FontFamily.Monospace
                         )
-                        listOf(1.0, 2.0, 5.0, 10.0, 20.0).forEach { speedVal ->
-                            val isSelected = currentSpeed == speedVal
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { onSpeedChange(speedVal) }
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "${speedVal.toInt()}x",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
                     }
                 }
             }
         }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
     }
 }
 
