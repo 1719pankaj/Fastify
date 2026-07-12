@@ -85,7 +85,7 @@ fun MainScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp),
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
                     ) {
                         Text(
@@ -98,14 +98,20 @@ fun MainScreen(
                     }
                 }
 
+                // Race control ticker — inline, not floating
+                widgetState?.raceControl?.let { logs ->
+                    if (logs.isNotEmpty()) {
+                        RaceControlTicker(logs = logs)
+                    }
+                }
+
                 // Main Standings List or Next Session Info
                 Box(modifier = Modifier.weight(1f)) {
                     if (widgetState == null && isRefreshing) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Color(0xFFE10600))
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                         }
                     } else if (widgetState == null || widgetState?.standings.isNullOrEmpty()) {
-                        // Show next session info if available
                         NoActiveSessionScreen(
                             schedule = schedule,
                             baseUrl = baseUrl,
@@ -119,23 +125,8 @@ fun MainScreen(
                         StandingsList(widgetState!!)
                     }
                 }
-            }
-            
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Race control logs ticker at bottom
-                widgetState?.raceControl?.let { logs ->
-                    if (logs.isNotEmpty()) {
-                        RaceControlTicker(logs = logs)
-                    }
-                }
-                
-                // Replay Controls (Only shown during simulation mode)
+
+                // Replay Controls — inline at the bottom of Column, not floating
                 if (widgetState?.session?.status == "simulation") {
                     ReplayControlPanel(
                         sessionInfo = widgetState?.session,
@@ -151,32 +142,41 @@ fun MainScreen(
                         }
                     )
                 }
+            }
 
-                // Floating Action Pill
-                Card(
-                    shape = RoundedCornerShape(50),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(8.dp),
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .padding(horizontal = 16.dp)
+            // Small Floating Action Pill — only this floats
+            Card(
+                shape = RoundedCornerShape(50),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                elevation = CardDefaults.cardElevation(6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        IconButton(onClick = { 
+                    IconButton(
+                        onClick = { 
                             viewModel.fetchHistoricalSessions()
                             showReplayPicker = true 
-                        }) {
-                            Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                        IconButton(onClick = { viewModel.refreshData() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface)
-                        }
+                        },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(
+                        onClick = { viewModel.refreshData() },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(
+                        onClick = { showSettings = true },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -232,17 +232,17 @@ fun TrackStatusBanner(widgetState: WidgetState?) {
     }
 
     Card(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = bg),
-        elevation = CardDefaults.cardElevation(8.dp),
+        elevation = CardDefaults.cardElevation(4.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -308,7 +308,7 @@ fun StandingsList(state: WidgetState) {
         .minOfOrNull { it.bestLapTime!! }
 
     LazyColumn(
-        contentPadding = PaddingValues(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 220.dp),
+        contentPadding = PaddingValues(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 72.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.fillMaxSize()
     ) {
@@ -487,6 +487,7 @@ fun TyreCompoundBadge(compound: String?) {
         modifier = Modifier
             .size(24.dp)
             .clip(CircleShape)
+            .border(1.dp, Color.DarkGray, CircleShape)
             .background(display.second)
     ) {
         Text(
@@ -501,38 +502,42 @@ fun TyreCompoundBadge(compound: String?) {
 
 @Composable
 fun RaceControlTicker(logs: List<String>) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    val newestLogs = logs.asReversed()
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .height(100.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(bottom = 2.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error)
+            )
             Text(
-                text = "RACE CONTROL MESSAGES",
-                fontSize = 11.sp,
+                text = "RACE CONTROL",
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.error,
                 letterSpacing = 1.sp,
                 fontFamily = FontFamily.Monospace
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            // Reverse list to show newest on top
-            val newestLogs = logs.asReversed()
-            newestLogs.take(3).forEach { message ->
-                Text(
-                    text = "• $message",
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(vertical = 2.dp),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        }
+        newestLogs.take(2).forEach { message ->
+            Text(
+                text = message,
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 14.dp)
+            )
         }
     }
 }
