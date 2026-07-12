@@ -181,6 +181,7 @@ fun MainScreen(
                     }
 
                     // Action buttons row — always visible at the very bottom
+                    val (pillBg, pillFg) = getFlagColors(widgetState?.session?.flag)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -191,7 +192,7 @@ fun MainScreen(
                     ) {
                         Card(
                             shape = CircleShape,
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                            colors = CardDefaults.cardColors(containerColor = pillBg),
                             elevation = CardDefaults.cardElevation(0.dp)
                         ) {
                             Row(
@@ -205,13 +206,13 @@ fun MainScreen(
                                         showReplayPicker = true
                                     }
                                 ) {
-                                    Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(Icons.Default.List, contentDescription = "History", tint = pillFg)
                                 }
                                 IconButton(onClick = { viewModel.refreshData() }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = pillFg)
                                 }
                                 IconButton(onClick = { showSettings = true }) {
-                                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = pillFg)
                                 }
                             }
                         }
@@ -253,12 +254,8 @@ fun MainScreen(
 }
 
 @Composable
-fun TrackStatusBanner(widgetState: WidgetState?) {
-    val flag = widgetState?.session?.flag ?: "UNKNOWN"
-    val sessionName = widgetState?.session?.name ?: "No Active Session"
-    val status = widgetState?.session?.status ?: "idle"
-
-    val (bg, fg) = when (flag.uppercase()) {
+fun getFlagColors(flag: String?): Pair<Color, Color> {
+    return when (flag?.uppercase()) {
         "GREEN" -> Color(0xFF388E3C) to Color.White
         "YELLOW", "DOUBLE YELLOW" -> Color(0xFFFBC02D) to Color.Black
         "RED" -> Color(0xFFD32F2F) to Color.White
@@ -268,6 +265,15 @@ fun TrackStatusBanner(widgetState: WidgetState?) {
         "CHECKERED" -> Color(0xFF37474F) to Color.White
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
+}
+
+@Composable
+fun TrackStatusBanner(widgetState: WidgetState?) {
+    val flag = widgetState?.session?.flag ?: "UNKNOWN"
+    val sessionName = widgetState?.session?.name ?: "No Active Session"
+    val status = widgetState?.session?.status ?: "idle"
+
+    val (bg, fg) = getFlagColors(flag)
 
     Card(
         shape = RoundedCornerShape(12.dp),
