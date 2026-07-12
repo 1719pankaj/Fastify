@@ -156,7 +156,7 @@ fun MainScreen(
                                 fontFamily = FontFamily.Monospace
                             )
                             Icon(
-                                imageVector = if (isReplayControlsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                imageVector = if (isReplayControlsExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                                 contentDescription = "Toggle Playback",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
@@ -184,14 +184,15 @@ fun MainScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                            .padding(horizontal = 8.dp)
+                            .padding(top = 2.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Card(
                             shape = CircleShape,
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            elevation = CardDefaults.cardElevation(2.dp)
+                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                            elevation = CardDefaults.cardElevation(0.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
@@ -204,13 +205,13 @@ fun MainScreen(
                                         showReplayPicker = true
                                     }
                                 ) {
-                                    Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 IconButton(onClick = { viewModel.refreshData() }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 IconButton(onClick = { showSettings = true }) {
-                                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
