@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -67,6 +69,7 @@ fun MainScreen(
 
     var showSettings by remember { mutableStateOf(false) }
     var showReplayPicker by remember { mutableStateOf(false) }
+    var isReplayControlsExpanded by remember { mutableStateOf(true) }
 
     val isSimulation = widgetState?.session?.status == "simulation"
 
@@ -132,47 +135,84 @@ fun MainScreen(
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 tonalElevation = 3.dp,
-                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)) {
                     // Replay seekbar + speed (only during simulation)
                     if (isSimulation) {
-                        ReplayControlPanel(
-                            sessionInfo = widgetState?.session,
-                            onPlayPauseToggle = {
-                                val isPaused = widgetState?.session?.paused == true
-                                if (isPaused) viewModel.resumeSimulation() else viewModel.pauseSimulation()
-                            },
-                            onSeek = { offset ->
-                                viewModel.seekSimulation(offset)
-                            },
-                            onSpeedChange = { speed ->
-                                viewModel.changeSpeed(speed)
-                            }
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isReplayControlsExpanded = !isReplayControlsExpanded }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "PLAYBACK CONTROLS",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Icon(
+                                imageVector = if (isReplayControlsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Toggle Playback",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        if (isReplayControlsExpanded) {
+                            ReplayControlPanel(
+                                sessionInfo = widgetState?.session,
+                                onPlayPauseToggle = {
+                                    val isPaused = widgetState?.session?.paused == true
+                                    if (isPaused) viewModel.resumeSimulation() else viewModel.pauseSimulation()
+                                },
+                                onSeek = { offset ->
+                                    viewModel.seekSimulation(offset)
+                                },
+                                onSpeedChange = { speed ->
+                                    viewModel.changeSpeed(speed)
+                                }
+                            )
+                        }
                     }
 
                     // Action buttons row — always visible at the very bottom
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.End,
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = {
-                                viewModel.fetchHistoricalSessions()
-                                showReplayPicker = true
-                            }
+                        Card(
+                            shape = CircleShape,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                            elevation = CardDefaults.cardElevation(2.dp)
                         ) {
-                            Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { viewModel.refreshData() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        viewModel.fetchHistoricalSessions()
+                                        showReplayPicker = true
+                                    }
+                                ) {
+                                    Icon(Icons.Default.List, contentDescription = "History", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
+                                IconButton(onClick = { viewModel.refreshData() }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
+                                IconButton(onClick = { showSettings = true }) {
+                                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
+                            }
                         }
                     }
                 }
@@ -229,17 +269,17 @@ fun TrackStatusBanner(widgetState: WidgetState?) {
     }
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = bg),
-        elevation = CardDefaults.cardElevation(4.dp),
+        elevation = CardDefaults.cardElevation(2.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -250,12 +290,12 @@ fun TrackStatusBanner(widgetState: WidgetState?) {
                 text = "TRACK STATUS: $flag",
                 fontWeight = FontWeight.Bold,
                 color = fg,
-                fontSize = 14.sp,
+                fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace
             )
             Text(
                 text = status.uppercase(),
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 color = fg.copy(alpha = 0.8f),
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
@@ -273,7 +313,7 @@ fun TrackStatusBanner(widgetState: WidgetState?) {
                 text = sessionName,
                 color = fg,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp
+                fontSize = 14.sp
             )
             widgetState?.session?.virtualTime?.let { vt ->
                 // Clean ISO string timestamp representation e.g. "15:51:19"
@@ -286,7 +326,7 @@ fun TrackStatusBanner(widgetState: WidgetState?) {
                     Text(
                         text = "VIRTUAL TIME: $timePart",
                         color = fg.copy(alpha = 0.9f),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
                     )
                 }
@@ -499,39 +539,54 @@ fun TyreCompoundBadge(compound: String?) {
 
 @Composable
 fun RaceControlTicker(logs: List<String>) {
+    var isExpanded by remember { mutableStateOf(false) }
     val newestLogs = logs.asReversed()
+    val displayLogs = if (isExpanded) newestLogs else newestLogs.take(2)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable { isExpanded = !isExpanded }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(bottom = 2.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.error)
-            )
-            Text(
-                text = "RACE CONTROL",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.error,
-                letterSpacing = 1.sp,
-                fontFamily = FontFamily.Monospace
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error)
+                )
+                Text(
+                    text = "RACE CONTROL",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                    letterSpacing = 1.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = "Toggle Race Control",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
             )
         }
-        newestLogs.take(2).forEach { message ->
+        displayLogs.forEach { message ->
             Text(
                 text = message,
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = FontFamily.Monospace,
-                maxLines = 1,
+                maxLines = if (isExpanded) 3 else 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 14.dp)
             )
