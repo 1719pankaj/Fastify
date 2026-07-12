@@ -1020,13 +1020,14 @@ fun HistoricalSessionPickerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurfaceVariant) },
-        modifier = Modifier.fillMaxHeight(0.8f)
+        dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurfaceVariant) }
     ) {
         Column(
             modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize()
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+                .padding(horizontal = 16.dp)
+                .windowInsetsPadding(WindowInsets.navigationBars)
         ) {
             Text(
                 text = "REPLAY A PAST RACE",
