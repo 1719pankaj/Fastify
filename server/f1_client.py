@@ -50,13 +50,80 @@ class F1DataAggregator:
         """Fetches the current year's sessions to determine upcoming schedule"""
         try:
             year = datetime.datetime.now(datetime.timezone.utc).year
-            res = requests.get(f"{OPENF1_BASE_URL}/sessions?year={year}")
+            res = requests.get(f"{OPENF1_BASE_URL}/sessions?year={year}", timeout=10)
             if res.status_code == 200:
                 with self.lock:
                     self.schedule = res.json()
-                print(f"Schedule fetched: {len(self.schedule)} sessions found for {year}")
+                print(f"Schedule fetched from OpenF1: {len(self.schedule)} sessions found for {year}")
+                return
+            else:
+                print(f"OpenF1 schedule fetch returned status {res.status_code}. Trying Jolpica fallback...")
         except Exception as e:
-            print(f"Error fetching schedule: {e}")
+            print(f"Error fetching schedule from OpenF1: {e}. Trying Jolpica fallback...")
+
+        # Fallback to Jolpica API (Ergast replacement) which is free and has no lockdown
+        try:
+            year = datetime.datetime.now(datetime.timezone.utc).year
+            res = requests.get(f"https://api.jolpi.ca/ergast/f1/{year}.json", timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+                mapped_sessions = []
+                
+                def parse_dt(d, t):
+                    if not d or not t: return None
+                    return f"{d}T{t}".replace("Z", "+00:00")
+                
+                for r in races:
+                    location = r.get("Circuit", {}).get("Location", {}).get("locality", "")
+                    country = r.get("Circuit", {}).get("Location", {}).get("country", "")
+                    
+                    # Helper to append sub-sessions
+                    def add_sub(sub_name, sub_data, duration_hours=1.0):
+                        if sub_data:
+                            dt_start = parse_dt(sub_data.get("date"), sub_data.get("time"))
+                            if dt_start:
+                                try:
+                                    dt_end = (datetime.datetime.fromisoformat(dt_start) + datetime.timedelta(hours=duration_hours)).isoformat()
+                                except:
+                                    dt_end = dt_start
+                                mapped_sessions.append({
+                                    "session_name": f"{r.get('raceName')} - {sub_name}",
+                                    "session_type": sub_name,
+                                    "date_start": dt_start,
+                                    "date_end": dt_end,
+                                    "location": location,
+                                    "country_name": country
+                                })
+
+                    add_sub("FP1", r.get("FirstPractice"), 1.0)
+                    add_sub("FP2", r.get("SecondPractice"), 1.0)
+                    add_sub("FP3", r.get("ThirdPractice"), 1.0)
+                    add_sub("Sprint Shootout", r.get("SprintQualifying") or r.get("SprintShootout"), 0.75)
+                    add_sub("Sprint", r.get("Sprint"), 1.0)
+                    add_sub("Qualifying", r.get("Qualifying"), 1.0)
+                    
+                    # Add main Race
+                    dt_start = parse_dt(r.get("date"), r.get("time"))
+                    if dt_start:
+                        try:
+                            dt_end = (datetime.datetime.fromisoformat(dt_start) + datetime.timedelta(hours=2.0)).isoformat()
+                        except:
+                            dt_end = dt_start
+                        mapped_sessions.append({
+                            "session_name": f"{r.get('raceName')} - Race",
+                            "session_type": "Race",
+                            "date_start": dt_start,
+                            "date_end": dt_end,
+                            "location": location,
+                            "country_name": country
+                        })
+
+                with self.lock:
+                    self.schedule = mapped_sessions
+                print(f"Schedule successfully loaded from Jolpica fallback: {len(self.schedule)} sessions.")
+        except Exception as ex:
+            print(f"Error fetching schedule from Jolpica: {ex}")
 
     def get_next_session(self):
         """Returns the next scheduled session based on current time"""
@@ -85,9 +152,11 @@ class F1DataAggregator:
         
         def fetch(endpoint):
             try:
-                res = requests.get(f"{OPENF1_BASE_URL}/{endpoint}?session_key={self.session_key}")
+                res = requests.get(f"{OPENF1_BASE_URL}/{endpoint}?session_key={self.session_key}", timeout=10)
                 if res.status_code == 200:
                     return res.json()
+                else:
+                    print(f"OpenF1 returned status {res.status_code} for {endpoint}")
             except Exception as e:
                 print(f"Error fetching {endpoint}: {e}")
             return []
