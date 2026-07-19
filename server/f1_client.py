@@ -419,10 +419,23 @@ class F1DataAggregator:
                     completed_laps = [l for l in d_laps if l.get('lap_duration')]
                     standings_dict[drv_num]['laps_completed'] = len(d_laps)
                     if completed_laps:
+                        def parse_time(val):
+                            if not val: return None
+                            if isinstance(val, (int, float)): return float(val)
+                            if isinstance(val, str):
+                                try:
+                                    if ':' in val:
+                                        m, s = val.split(':', 1)
+                                        return float(m) * 60 + float(s)
+                                    return float(val)
+                                except Exception:
+                                    pass
+                            return None
+
                         last_lap = completed_laps[-1]
-                        standings_dict[drv_num]['last_lap_time'] = last_lap.get('lap_duration')
-                        best_lap = min(completed_laps, key=lambda x: x.get('lap_duration', 9999))
-                        standings_dict[drv_num]['best_lap_time'] = best_lap.get('lap_duration')
+                        standings_dict[drv_num]['last_lap_time'] = parse_time(last_lap.get('lap_duration'))
+                        best_lap = min(completed_laps, key=lambda x: parse_time(x.get('lap_duration')) or 9999)
+                        standings_dict[drv_num]['best_lap_time'] = parse_time(best_lap.get('lap_duration'))
 
             # Stints
             # The API doesn't have a 'date' for stints, but we can estimate based on lap counts or just take the max stint number that has less laps than laps_completed
