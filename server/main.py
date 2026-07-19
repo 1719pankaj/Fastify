@@ -5,6 +5,7 @@ import threading
 import time
 import asyncio
 
+import datetime
 from config import DEFAULT_SIMULATION_SESSION_KEY, LIVE_POLL_INTERVAL
 from f1_client import f1_data
 
@@ -20,14 +21,34 @@ app.add_middleware(
 )
 
 @app.on_event("startup")
-def startup_event():
-    # Fetch schedule for the year
-    threading.Thread(target=f1_data.fetch_schedule).start()
+async def startup_event():
+    # Fetch schedule synchronously so we can immediately inspect it
+    f1_data.fetch_schedule()
     
-    # Auto-start simulation for testing out-of-the-box
-    print(f"Starting default simulation with session {DEFAULT_SIMULATION_SESSION_KEY}...")
-    # Doing this in a background thread so we don't block server startup
-    threading.Thread(target=f1_data.start_simulation, args=(DEFAULT_SIMULATION_SESSION_KEY, 10.0)).start()
+    # Check if a session is currently active
+    next_session = f1_data.get_next_session()
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    
+    is_active = False
+    if next_session:
+        ds = next_session.get("date_start")
+        de = next_session.get("date_end")
+        if ds and de:
+            ds_iso = ds.replace('Z', '+00:00')
+            de_iso = de.replace('Z', '+00:00')
+            if ds_iso <= now <= de_iso:
+                is_active = True
+                
+    if is_active:
+        print(f"Active session detected: {next_session['session_name']}. Starting LIVE tracking...")
+        f1_data.set_session("live_active", mode="live")
+        # Start the async live loop in the current asyncio event loop
+        asyncio.create_task(f1_data._live_loop())
+    else:
+        # Auto-start simulation for testing out-of-the-box
+        print(f"No active session. Starting default simulation with session {DEFAULT_SIMULATION_SESSION_KEY}...")
+        # Doing this in a background thread so we don't block server startup
+        threading.Thread(target=f1_data.start_simulation, args=(DEFAULT_SIMULATION_SESSION_KEY, 10.0)).start()
 
 @app.on_event("shutdown")
 def shutdown_event():

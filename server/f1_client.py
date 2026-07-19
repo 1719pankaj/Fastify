@@ -126,18 +126,30 @@ class F1DataAggregator:
             print(f"Error fetching schedule from Jolpica: {ex}")
 
     def get_next_session(self):
-        """Returns the next scheduled session based on current time"""
+        """Returns the current active session or the next scheduled session based on current time"""
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        active = []
         upcoming = []
         with self.lock:
             for s in self.schedule:
-                # Use date_start
                 ds = s.get('date_start')
+                de = s.get('date_end')
                 if ds:
                     ds_iso = ds.replace('Z', '+00:00')
+                    # If we have an end date, check if it's currently active
+                    if de:
+                        de_iso = de.replace('Z', '+00:00')
+                        if ds_iso <= now <= de_iso:
+                            active.append(s)
+                            continue
+                    
                     if ds_iso > now:
                         upcoming.append(s)
             
+            if active:
+                active.sort(key=lambda x: x.get('date_start'))
+                return active[0]
+                
             if upcoming:
                 upcoming.sort(key=lambda x: x.get('date_start'))
                 return upcoming[0]
@@ -190,31 +202,68 @@ class F1DataAggregator:
         import asyncio
         import json
         import websockets
-        hub = "Streaming"
-        negotiate_url = f"https://livetiming.formula1.com/signalr/negotiate?clientProtocol=1.5&connectionData=[%7B%22name%22:%22{hub}%22%7D]"
+        negotiate_url = "https://livetiming.formula1.com/signalrcore/negotiate?negotiateVersion=1"
         try:
-            res = requests.get(negotiate_url)
-            token = res.json()['ConnectionToken']
-            url = f"wss://livetiming.formula1.com/signalr/connect?clientProtocol=1.5&transport=webSockets&connectionToken={token}&connectionData=[%7B%22name%22:%22{hub}%22%7D]"
+            # SignalR Core negotiation requires a POST request
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            res = requests.post(negotiate_url, headers=headers, timeout=10)
+            if res.status_code != 200:
+                print(f"Negotiation failed: {res.status_code}")
+                return
             
-            async with websockets.connect(url) as ws:
+            token = res.json().get('connectionToken')
+            url = f"wss://livetiming.formula1.com/signalrcore?id={token}"
+            
+            # Extract sticky session cookies for routing
+            cookies = res.cookies
+            cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+            ws_headers = {
+                "Cookie": cookie_str
+            }
+            
+            async with websockets.connect(url, additional_headers=ws_headers) as ws:
+                # 1. Send Handshake message (ended by \x1e)
+                handshake = {"protocol": "json", "version": 1}
+                await ws.send(json.dumps(handshake) + "\x1e")
+                
+                # Wait for Handshake response
+                handshake_res = await ws.recv()
+                # Remove \x1e separator
+                print(f"SignalR Core Handshake complete: {handshake_res.replace(chr(30), '').strip()}")
+                
+                # 2. Subscribe to topics with invocationId
                 subscribe_msg = {
-                    "H": hub,
-                    "M": "Subscribe",
-                    "A": [["TimingData", "TrackStatus", "RaceControlMessages", "DriverList"]],
-                    "I": 1
+                    "type": 1,
+                    "invocationId": "0",
+                    "target": "Subscribe",
+                    "arguments": [["TimingData", "TrackStatus", "RaceControlMessages", "DriverList"]]
                 }
-                await ws.send(json.dumps(subscribe_msg))
-                print("Connected to F1 SignalR for Live Data")
+                await ws.send(json.dumps(subscribe_msg) + "\x1e")
+                print("Connected to F1 SignalR Core for Live Data")
                 
                 while self.mode == "live":
                     msg = await ws.recv()
-                    data = json.loads(msg)
-                    if 'M' in data:
-                        for m in data['M']:
-                            if m['M'] == 'feed':
-                                topic = m['A'][0]
-                                payload = m['A'][1]
+                    # SignalR Core protocol packets are separated by \x1e (ASCII 30)
+                    packets = msg.split(chr(30))
+                    for p in packets:
+                        if not p.strip(): continue
+                        data = json.loads(p)
+                        
+                        # 3a. Handle initial subscription result state (Type 3)
+                        if data.get('type') == 3 and data.get('invocationId') == '0':
+                            result = data.get('result', {})
+                            if isinstance(result, dict):
+                                for topic, payload in result.items():
+                                    self._handle_live_msg(topic, payload)
+                                    
+                        # 3b. Handle incremental feed updates (Type 1)
+                        elif data.get('type') == 1 and data.get('target') == 'feed':
+                            args = data.get('arguments', [])
+                            if len(args) >= 2:
+                                topic = args[0]
+                                payload = args[1]
                                 self._handle_live_msg(topic, payload)
         except Exception as e:
             print("Live WS error", e)
